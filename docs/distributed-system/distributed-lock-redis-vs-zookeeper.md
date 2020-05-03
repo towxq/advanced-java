@@ -17,17 +17,17 @@
 
 #### redis 最普通的分布式锁
 
-第一个最普通的实现方式，就是在 redis 里使用 `setnx` 命令创建一个 key，这样就算加锁。
+第一个最普通的实现方式，就是在 redis 里使用 `SET key value [EX seconds] [PX milliseconds] NX` 创建一个 key，这样就算加锁。其中：
 
+- `NX`：表示只有 `key` 不存在的时候才会设置成功，如果此时 redis 中存在这个 `key`，那么设置失败，返回 `nil`。
+- `EX seconds`：设置 `key` 的过期时间，精确到秒级。意思是 `seconds` 秒后锁自动释放，别人创建的时候如果发现已经有了就不能加锁了。
+- `PX milliseconds`：同样是设置 `key` 的过期时间，精确到毫秒级。
+
+比如执行以下命令：
 
 ```r
-SET resource_name my_random_value NX PX 30000
+SET resource_name my_random_value PX 30000 NX
 ```
-
-执行这个命令就 ok。
-
-- `NX`：表示只有 `key` 不存在的时候才会设置成功。（如果此时 redis 中存在这个 key，那么设置失败，返回 `nil`）
-- `PX 30000`：意思是 30s 后锁自动释放。别人创建的时候如果发现已经有了就不能加锁了。
 
 释放锁就是删除 key ，但是一般可以用 `lua` 脚本删除，判断 value 一样才删除：
 
@@ -54,7 +54,7 @@ end
 5. 要是锁建立失败了，那么就依次之前建立过的锁删除；
 6. 只要别人建立了一把分布式锁，你就得**不断轮询去尝试获取锁**。
 
-![redis-redlock](/images/redis-redlock.png)
+![redis-redlock](./images/redis-redlock.png)
 
 [Redis 官方](https://redis.io/)给出了以上两种基于 Redis 实现分布式锁的方法，详细说明可以查看：https://redis.io/topics/distlock 。
 
@@ -65,10 +65,6 @@ zk 分布式锁，其实可以做的比较简单，就是某个节点尝试创�
 ```java
 /**
  * ZooKeeperSession
- * 
- * @author bingo
- * @since 2018/11/29
- *
  */
 public class ZooKeeperSession {
 
@@ -141,11 +137,7 @@ public class ZooKeeperSession {
     }
 
     /**
-     * 建立zk session的watcher
-     * 
-     * @author bingo
-     * @since 2018/11/29
-     *
+     * 建立 zk session 的 watcher
      */
     private class ZooKeeperWatcher implements Watcher {
 
@@ -165,10 +157,6 @@ public class ZooKeeperSession {
 
     /**
      * 封装单例的静态内部类
-     * 
-     * @author bingo
-     * @since 2018/11/29
-     *
      */
     private static class Singleton {
 
@@ -207,6 +195,7 @@ public class ZooKeeperSession {
 也可以采用另一种方式，创建临时顺序节点：
 
 如果有一把锁，被多个人给竞争，此时多个人会排队，第一个拿到锁的人会执行，然后释放锁；后面的每个人都会去监听**排在自己前面**的那个人创建的 node 上，一旦某个人释放了锁，排在自己后面的人就会被 zookeeper 给通知，一旦被通知了之后，就 ok 了，自己就获取到了锁，就可以执行代码了。
+
 ```java
 public class ZooKeeperDistributedLock implements Watcher {
 
